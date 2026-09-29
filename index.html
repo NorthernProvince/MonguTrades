@@ -1199,21 +1199,40 @@
                 return;
             }
             try {
-                const { data, error } = await supabaseClient
+                // 1. Fetch assignments
+                const { data: assignments, error: aErr } = await supabaseClient
                     .from('teacher_subject_assignments')
-                    .select('*, teachers(name), classes(display_name)')
+                    .select('*')
                     .order('class_id');
-                if (error) throw error;
+                if (aErr) throw aErr;
 
-                if (!data || data.length === 0) {
+                // 2. Fetch teachers and classes separately (safer than relying on implicit joins)
+                const { data: teachers, error: tErr } = await supabaseClient
+                    .from('teachers')
+                    .select('id, name');
+                if (tErr) throw tErr;
+
+                const { data: classes, error: cErr } = await supabaseClient
+                    .from('classes')
+                    .select('id, display_name');
+                if (cErr) throw cErr;
+
+                // 3. Build mapping dictionaries
+                const teacherMap = {};
+                (teachers || []).forEach(t => { teacherMap[t.id] = t.name; });
+                
+                const classMap = {};
+                (classes || []).forEach(c => { classMap[c.id] = c.display_name || String(c.id); });
+
+                if (!assignments || assignments.length === 0) {
                     assignmentsTableBody2.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--ink-faint);">No assignments found.</td></tr>`;
                     return;
                 }
 
                 let html = '';
-                data.forEach((a, i) => {
-                    const classDisplay = a.classes ? (a.classes.display_name || a.class_id) : getClassDisplay(a.class_id);
-                    const teacherName = a.teachers ? a.teachers.name : 'Unknown';
+                assignments.forEach((a, i) => {
+                    const classDisplay = classMap[a.class_id] || getClassDisplay(a.class_id);
+                    const teacherName = teacherMap[a.teacher_id] || 'Unknown';
                     html += `<tr class="assignment-row">
                         <td>${i+1}</td>
                         <td><strong>${classDisplay}</strong></td>
